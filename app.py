@@ -9,6 +9,8 @@ STATES = ["CA", "TX", "FL", "NY", "IL", "OH", "PA", "GA", "NC", "AZ"]
 CHANNELS = ["Mass Merchandiser", "Grocery", "Cigarette Outlet", "Drug Store"]
 ACCOUNT_TYPES = ["Chain", "Independent"]
 PREMISE_TYPES = ["Off-Premise", "On-Premise"]
+VOLUME_TIERS = ["Low", "Medium", "High", "Very High"]
+
 CHAINS = {
     "Mass Merchandiser": ["Walmart", "Target", "Costco"],
     "Grocery": ["Kroger", "Safeway", "Publix"],
@@ -38,6 +40,7 @@ def generate_accounts(n: int = 50) -> pd.DataFrame:
                 "current_coverage_pct": round(random.uniform(5, 100), 1),
                 # how many display units that account typically needs
                 "units_needed": random.randint(1, 6),
+                "store_volume": random.choice(VOLUME_TIERS),
             }
         )
     return pd.DataFrame(rows)
@@ -67,6 +70,9 @@ with st.sidebar:
     premise_options = ["All"] + PREMISE_TYPES
     selected_premise = st.selectbox("Premise Type", premise_options)
 
+    volume_options = ["All"] + VOLUME_TIERS
+    selected_volume = st.selectbox("Store Volume", volume_options)
+
     st.divider()
 
     coverage_threshold = st.slider(
@@ -92,6 +98,8 @@ if selected_type != "All":
     df = df[df["account_type"] == selected_type]
 if selected_premise != "All":
     df = df[df["premise_type"] == selected_premise]
+if selected_volume != "All":
+    df = df[df["store_volume"] == selected_volume]
 
 # Keep only accounts that are under the coverage threshold (they need restocking)
 df = df[df["current_coverage_pct"] < coverage_threshold]
@@ -169,7 +177,7 @@ else:
         detail_cols = [
             "account_id", "account_name", "state",
             "trade_channel", "account_type", "premise_type",
-            "current_coverage_pct", "units_needed",
+            "store_volume", "current_coverage_pct", "units_needed",
         ]
         st.dataframe(
             df[detail_cols].rename(columns={
@@ -179,6 +187,7 @@ else:
                 "trade_channel": "Channel",
                 "account_type": "Type",
                 "premise_type": "Premise",
+                "store_volume": "Store Volume",
                 "current_coverage_pct": "Coverage %",
                 "units_needed": "Units Needed",
             }).sort_values(["State", "Account"]),
