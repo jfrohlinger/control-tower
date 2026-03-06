@@ -20,7 +20,7 @@ CHAINS = {
 
 
 @st.cache_data
-def generate_accounts(n: int = 50) -> pd.DataFrame:
+def generate_accounts(n: int = 1000) -> pd.DataFrame:
     random.seed(42)
     np.random.seed(42)
     rows = []
@@ -48,15 +48,19 @@ def generate_accounts(n: int = 50) -> pd.DataFrame:
 
 # ── App ────────────────────────────────────────────────────────────────────────
 
-st.set_page_config(page_title="Smart Ordering Control Tower", layout="wide")
-st.title("Smart Ordering Control Tower")
+st.set_page_config(page_title="Smart Ordering Control Tower", page_icon="📊", layout="wide")
+st.title("📊 Smart Ordering Control Tower")
 
-df_all = generate_accounts(50)
+df_all = generate_accounts(1000)
 
 # ── Sidebar filters ────────────────────────────────────────────────────────────
 
 with st.sidebar:
     st.header("Filters")
+
+    item_name = st.text_input("POS Item", value="Pole Toppers")
+
+    st.divider()
 
     state_options = ["All"] + sorted(df_all["state"].unique().tolist())
     selected_state = st.selectbox("State", state_options)
@@ -75,16 +79,40 @@ with st.sidebar:
 
     st.divider()
 
-    coverage_threshold = st.slider(
-        "Coverage Threshold (%)",
-        min_value=10,
-        max_value=100,
-        value=80,
-        step=5,
-        help="Only include accounts whose current coverage is below this threshold.",
+    # ── Coverage threshold mode ────────────────────────────────────────────────
+    st.subheader("Coverage Threshold (%)")
+    threshold_mode = st.radio(
+        "Apply threshold",
+        ["Equally across all states", "Per state"],
+        help="Choose whether to use one threshold for all states or set a custom threshold per state.",
     )
 
-    item_name = st.text_input("Item Name", value="Pole Toppers")
+    available_states = sorted(df_all["state"].unique().tolist())
+
+    if threshold_mode == "Equally across all states":
+        global_threshold = st.slider(
+            "Global threshold",
+            min_value=10,
+            max_value=100,
+            value=80,
+            step=5,
+            help="Include accounts whose coverage is below this value.",
+        )
+        state_thresholds = {s: global_threshold for s in available_states}
+        coverage_threshold = global_threshold  # for summary text
+    else:
+        st.caption("Set a threshold for each state:")
+        state_thresholds = {}
+        for s in available_states:
+            state_thresholds[s] = st.slider(
+                s,
+                min_value=10,
+                max_value=100,
+                value=80,
+                step=5,
+                key=f"thresh_{s}",
+            )
+        coverage_threshold = None  # no single value; varies by state
 
 # ── Filter logic ───────────────────────────────────────────────────────────────
 
@@ -101,8 +129,10 @@ if selected_premise != "All":
 if selected_volume != "All":
     df = df[df["store_volume"] == selected_volume]
 
-# Keep only accounts that are under the coverage threshold (they need restocking)
-df = df[df["current_coverage_pct"] < coverage_threshold]
+# Apply per-state (or global) coverage threshold
+df["_threshold"] = df["state"].map(state_thresholds)
+df = df[df["current_coverage_pct"] < df["_threshold"]]
+df = df.drop(columns=["_threshold"])
 
 # ── Aggregation ────────────────────────────────────────────────────────────────
 
@@ -122,21 +152,23 @@ by_state = (
 
 if total_accounts == 0:
     summary = (
-        f"No accounts match your current filters. "
-        f"Try widening the filters or raising the coverage threshold."
+        "No accounts match your current filters. "
+        "Try widening the filters or raising the coverage threshold."
     )
 else:
-    state_phrase = (
-        f"{num_states} state" if num_states == 1 else f"{num_states} states"
-    )
+    state_phrase = f"{num_states} state" if num_states == 1 else f"{num_states} states"
+    if coverage_threshold is not None:
+        threshold_phrase = f"coverage below {coverage_threshold}%"
+    else:
+        threshold_phrase = "state-specific coverage thresholds"
     summary = (
         f"You need **{total_units} {item_name}** across **{state_phrase}** "
         f"based on your filters. "
         f"({total_accounts} qualifying account{'s' if total_accounts != 1 else ''} "
-        f"with coverage below {coverage_threshold}%)"
+        f"with {threshold_phrase})"
     )
 
-st.info(summary, icon="📦")
+st.info(summary, icon="📊")
 
 # ── KPI row ────────────────────────────────────────────────────────────────────
 
@@ -155,7 +187,7 @@ else:
     col_table, col_chart = st.columns([1, 1], gap="large")
 
     with col_table:
-        st.subheader(f"Units to Order per State")
+        st.subheader("Units to Order per State")
         st.dataframe(
             by_state,
             use_container_width=True,
